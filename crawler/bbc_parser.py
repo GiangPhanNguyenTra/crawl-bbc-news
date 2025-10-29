@@ -2,9 +2,9 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import re
-from datetime import date
 
-class BBCParser:
+from crawler.base_parser import BaseParser 
+class BBCParser(BaseParser):
     def __init__(self, base_url="https://www.bbc.com"):
         self.base_url = base_url
         self.news_url = urljoin(base_url, "/news")
@@ -56,7 +56,6 @@ class BBCParser:
 
         title = article_body.find('h1')
         desc_tag = soup.find('meta', {'name': 'description'})
-        author_tag = soup.find('meta', {'name': 'author'})
         date_tag = article_body.find('time')
         
         main_image_url = "N/A"
@@ -72,10 +71,11 @@ class BBCParser:
         content_text = ' '.join([p.get_text(strip=True) for p in paragraphs])
         
         return {
-            "src": "BBC News", "link": article_url,
+            "src": "BBC News", 
+            "link": article_url,
             "title": title.get_text(strip=True) if title else "N/A",
             "desc": desc_tag['content'] if desc_tag else "N/A",
-            "author": author_tag['content'] if author_tag else "N/A",
-            "creation_date": date_tag['datetime'] if date_tag else "N/A",
-            "image": main_image_url, "content_for_analysis": content_text
+            "published_date": date_tag['datetime'] if date_tag else "N/A",
+            "image": main_image_url, 
+            "content_for_analysis": content_text
         }

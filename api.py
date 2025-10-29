@@ -2,13 +2,14 @@ from fastapi import FastAPI, HTTPException
 from datetime import date
 from typing import List
 from crawler.bbc_parser import BBCParser
+from crawler.guardian_parser import GuardianParser
 from crawler.word_analyzer import WordAnalyzer
 from fastapi.middleware.cors import CORSMiddleware
+from crawler.base_parser import BaseParser
 
 app = FastAPI(
-    title="BBC News Crawler API",
-    description="API để crawl tin tức từ BBC News.",
-    version="1.1.0",
+    title="News Crawler API",
+    description="API để crawl tin tức từ các nguồn báo uy tín.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -20,13 +21,16 @@ app.add_middleware(
 
 try:
     analyzer = WordAnalyzer(cefr_word_list_path='data/word_list_cefr_clean.csv')
-    parser = BBCParser()
+    PARSERS = {
+        "bbc": BBCParser(),
+        "guardian": GuardianParser()
+    }
 except FileNotFoundError:
     analyzer = None
-    parser = None
+    PARSERS = None
 
-def _process_links_and_get_data(article_links: List[str]) -> List[dict]:
-    if not article_links:
+def _process_links_and_get_data(parser: BaseParser, article_links: List[str]) -> List[dict]:
+    if not article_links or not analyzer:
         return []
     
     crawled_data = []
@@ -39,15 +43,25 @@ def _process_links_and_get_data(article_links: List[str]) -> List[dict]:
             crawled_data.append(article_data)
     return crawled_data
 
-@app.get("/crawl/latest", summary="Crawl 5 tin tức mới nhất")
-def crawl_latest_news():
-    if not parser or not analyzer:
+
+@app.get("/crawl/bbc", summary="Crawl 5 tin tức mới nhất từ BBC News")
+def crawl_latest_bbc_news():
+    if not PARSERS or not analyzer:
         raise HTTPException(status_code=500, detail="Server not configured properly.")
 
-    latest_links = parser.get_latest_links(limit=5)
-    return _process_links_and_get_data(latest_links)
+    bbc_parser = PARSERS["bbc"]
+    latest_links = bbc_parser.get_latest_links(limit=5)
+    return _process_links_and_get_data(bbc_parser, latest_links)
 
+@app.get("/crawl/guardian", summary="Crawl 5 tin tức mới nhất từ The Guardian")
+def crawl_latest_guardian_news():
+    if not PARSERS or not analyzer:
+        raise HTTPException(status_code=500, detail="Server not configured properly.")
+
+    guardian_parser = PARSERS["guardian"]
+    latest_links = guardian_parser.get_latest_links(limit=5)
+    return _process_links_and_get_data(guardian_parser, latest_links)
 
 @app.get("/", summary="Trạng thái API", include_in_schema=False)
 def read_root():
-    return {"status": "BBC News Crawler API is running."}
+    return {"status": "News Crawler API is running."}
