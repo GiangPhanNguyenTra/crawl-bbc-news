@@ -1,0 +1,22 @@
+# .gitignore
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# NLTK Data (không cần commit lên git)
+/crawler/nltk_data/
+
+# IDE specific
+.idea/
+.vscode/

@@ -1,0 +1,8 @@
+requests
+beautifulsoup4
+lxml
+pandas
+nltk
+bs4
+fastapi
+uvicorn[standard]
