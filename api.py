@@ -3,6 +3,7 @@ from datetime import date
 from typing import List
 from crawler.bbc_parser import BBCParser
 from crawler.guardian_parser import GuardianParser
+from crawler.reuters_parser import ReutersParser
 from crawler.word_analyzer import WordAnalyzer
 from fastapi.middleware.cors import CORSMiddleware
 from crawler.base_parser import BaseParser
@@ -23,7 +24,8 @@ try:
     analyzer = WordAnalyzer(cefr_word_list_path='data/word_list_cefr_clean.csv')
     PARSERS = {
         "bbc": BBCParser(),
-        "guardian": GuardianParser()
+        "guardian": GuardianParser(),
+        "reuters": ReutersParser()
     }
 except FileNotFoundError:
     analyzer = None
@@ -61,6 +63,15 @@ def crawl_latest_guardian_news():
     guardian_parser = PARSERS["guardian"]
     latest_links = guardian_parser.get_latest_links(limit=5)
     return _process_links_and_get_data(guardian_parser, latest_links)
+
+@app.get("/crawl/reuters", summary="Crawl 5 tin tức mới nhất từ Reuters")
+def crawl_latest_reuters_news():
+    if not PARSERS or not analyzer:
+        raise HTTPException(status_code=500, detail="Server not configured properly.")
+
+    reuters_parser = PARSERS["reuters"]
+    latest_links = reuters_parser.get_latest_links( limit=5)
+    return _process_links_and_get_data(reuters_parser, latest_links)
 
 @app.get("/", summary="Trạng thái API", include_in_schema=False)
 def read_root():
