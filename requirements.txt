@@ -6,3 +6,4 @@ nltk
 bs4
 fastapi
 uvicorn[standard]
+scikit-learn

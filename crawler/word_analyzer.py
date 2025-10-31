@@ -1,66 +1,69 @@
-import os
 import pandas as pd
-from typing import List, Dict
-
 import nltk
-from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 class WordAnalyzer:
-    def __init__(self, cefr_word_list_path: str):
+    def __init__(self, cefr_word_list_path):
+        print("Loading CEFR word list...")
+        df = pd.read_csv(cefr_word_list_path)
+        self.cefr_words = set(df['word'].str.lower())
+        print(f"Loaded {len(self.cefr_words)} words from CEFR list.")
+        
         self.lemmatizer = WordNetLemmatizer()
-        
-        self._download_nltk_data()
 
-        self.stop_words = set(stopwords.words('english'))
-        self.cefr_order = ['C2', 'C1', 'B2', 'B1', 'A2', 'A1']
-        self.word_dict = self._load_word_list(cefr_word_list_path)
-        print(f"Loaded {len(self.word_dict)} words from CEFR list.")
-        
-    def _download_nltk_data(self):
-        try:
-            stopwords.words('english')
-            word_tokenize('test')
-            self.lemmatizer.lemmatize('test')
-        except LookupError as e:
-            print(f"NLTK data component not found: {e}. Downloading required packages...")
-            nltk.download('punkt')
-            nltk.download('stopwords')
-            nltk.download('wordnet')
-            nltk.download('omw-1.4')
-            print("NLTK data downloaded successfully.")
-            self.stop_words = set(stopwords.words('english'))
+    def _lemmatizing_tokenizer(self, text):
+        tokens = nltk.word_tokenize(text.lower())
+        return [self.lemmatizer.lemmatize(token) for token in tokens if token.isalpha()]
 
-
-    def _load_word_list(self, path: str) -> Dict[str, str]:
-        try:
-            df = pd.read_csv(path)
-            return pd.Series(df.level.values, index=df.word.str.lower()).to_dict()
-        except FileNotFoundError:
-            print(f"FATAL: Word list file not found at {path}")
-            raise
-        except KeyError:
-            print("FATAL: CSV must contain 'word' and 'level' columns.")
-            raise
-
-    def find_known_words(self, text_content: str, limit: int = 20) -> List[Dict[str, str]]:
-        if not text_content:
+    def extract_keywords_with_tfidf(self, corpus_texts: list, limit_per_article=20):
+        if not corpus_texts:
             return []
 
-        tokens = word_tokenize(text_content.lower())
-        
-        lemmatized_words = set()
-        for token in tokens:
-            if token.isalpha() and len(token) > 2 and token not in self.stop_words:
-                lemma = self.lemmatizer.lemmatize(token)
-                lemmatized_words.add(lemma)
-        
-        found_words = []
-        for word in lemmatized_words:
-            level = self.word_dict.get(word)
-            if level in self.cefr_order:
-                found_words.append(word)
+        # 1. Khởi tạo TfidfVectorizer
+        vectorizer = TfidfVectorizer(
+            tokenizer=self._lemmatizing_tokenizer,
+            stop_words='english',
+            max_df=0.8,
+            min_df=2 
+        )
 
-        
-        return found_words[:limit]
+        # 2. Học từ vựng và tính toán ma trận TF-IDF
+        try:
+            tfidf_matrix = vectorizer.fit_transform(corpus_texts)
+        except ValueError:
+            # Xảy ra khi corpus quá nhỏ hoặc không có từ nào đáp ứng min_df
+            print("Warning: Could not build TF-IDF matrix. Corpus might be too small or empty.")
+            return [[] for _ in corpus_texts]
+            
+        # Lấy danh sách tất cả các từ (features) mà vectorizer đã học được
+        feature_names = vectorizer.get_feature_names_out()
+
+        all_keywords = []
+        # 3. Trích xuất từ khóa cho từng bài báo
+        for doc_index in range(len(corpus_texts)):
+            # Lấy vector TF-IDF cho bài báo hiện tại
+            feature_vector = tfidf_matrix[doc_index]
+            
+            # Lấy chỉ số và điểm số của các từ có trong bài báo này
+            # .tocoo() chuyển đổi ma trận thưa thành định dạng dễ duyệt hơn
+            non_zero_indices = feature_vector.tocoo().col
+            scores = feature_vector.tocoo().data
+
+            # Tạo một list các tuple (từ, điểm số)
+            word_score_pairs = [(feature_names[i], scores[idx]) for idx, i in enumerate(non_zero_indices)]
+            
+            # Sắp xếp các từ theo điểm số TF-IDF giảm dần
+            sorted_word_scores = sorted(word_score_pairs, key=lambda x: x[1], reverse=True)
+
+            # 4. Lọc kết quả: chỉ giữ lại các từ có trong danh sách CEFR
+            doc_keywords = []
+            for word, score in sorted_word_scores:
+                if len(doc_keywords) >= limit_per_article:
+                    break
+                if word in self.cefr_words:
+                    doc_keywords.append(word)
+            
+            all_keywords.append(doc_keywords)
+            
+        return all_keywords
