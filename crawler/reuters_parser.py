@@ -61,7 +61,7 @@ class ReutersParser:
             creation_date_iso = time_tag['datetime']
         
         main_image_url = "N/A"
-        og_image_tag = soup.find('meta', property='og_image')
+        og_image_tag = soup.find('meta', property='og:image')
         if og_image_tag and og_image_tag.has_attr('content'):
             main_image_url = og_image_tag['content']
         else:
@@ -72,9 +72,11 @@ class ReutersParser:
         article_container = soup.find('div', {'data-testid': 'ArticleBody'})
         content_text = ""
         if article_container:
-            paragraphs = article_container.find_all('p')
+            paragraphs = article_container.select('div[data-testid^="paragraph-"]')
             content_text = ' '.join([p.get_text(strip=True) for p in paragraphs])
         
+        full_content_for_analysis = f"{title_tag.get_text(strip=True) if title_tag else ''}. {desc_text}. {content_text}"
+
         return {
             "src": "Reuters",
             "link": article_url,
@@ -82,5 +84,5 @@ class ReutersParser:
             "desc": desc_text,
             "published_date": creation_date_iso,
             "image": main_image_url,
-            "content_for_analysis": content_text
+            "content_for_analysis": full_content_for_analysis 
         }
