@@ -12,3 +12,8 @@ pymongo[srv]
 python-dotenv
 pydantic
 pydantic-settings
+
+numpy
+
+keybert
+sentence-transformers

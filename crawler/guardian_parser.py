@@ -121,7 +121,7 @@ class GuardianParser(BaseParser):
                 "title": title,
                 "desc": desc,
                 "published_date": published_date,
-                "url": url,
+                "link": url,
                 "source": "The Guardian",
                 "image": image_src,
                 "content_for_analysis": f"{title}. {desc} {content_for_analysis}"

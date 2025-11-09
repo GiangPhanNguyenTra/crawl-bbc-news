@@ -54,44 +54,46 @@ def _enrich_and_store_articles(articles: List[dict]) -> List[dict]:
         except requests.RequestException as e:
             print(f"Could not call enrichment API: {e}")
 
+    crawled_on_date = date.today().isoformat()
     final_articles = []
     for i, article in enumerate(articles):
         enriched_words = [word_details_map.get(word) for word in all_keywords_lists[i] if word in word_details_map]
         article['list_words'] = enriched_words
         del article['content_for_analysis']
         
+        article['crawled_date'] = crawled_on_date
         news_collection.replace_one({'link': article['link']}, article, upsert=True)
         final_articles.append(article)
     
     return final_articles
 
-@app.get("/crawl/bbc", summary="Crawl 5 tin tức mới nhất từ BBC News")
+@app.get("/crawl/bbc", summary="Crawl 1 tin tức mới nhất từ BBC News")
 def crawl_latest_bbc_news():
     if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["bbc"]
-    latest_links = parser.get_latest_links( limit=5)
+    latest_links = parser.get_latest_links( limit=1)
     
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
     return _enrich_and_store_articles(crawled_articles)
 
-@app.get("/crawl/guardian", summary="Crawl 5 tin tức mới nhất từ The Guardian")
+@app.get("/crawl/guardian", summary="Crawl 2 tin tức mới nhất từ The Guardian")
 def crawl_latest_guardian_news():
     if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["guardian"]
-    latest_links = parser.get_latest_links( limit=5)
+    latest_links = parser.get_latest_links( limit=2)
 
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
     return _enrich_and_store_articles(crawled_articles)
 
-@app.get("/crawl/reuters", summary="Crawl 5 tin tức mới nhất từ Reuters")
+@app.get("/crawl/reuters", summary="Crawl 2 tin tức mới nhất từ Reuters")
 def crawl_latest_reuters_news():
     if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["reuters"]
-    latest_links = parser.get_latest_links( limit=5)
+    latest_links = parser.get_latest_links( limit=2)
 
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
@@ -100,20 +102,14 @@ def crawl_latest_reuters_news():
 
 @app.get("/articles/{query_date}", summary="Lấy danh sách các báo đã crawl trong ngày từ DB")
 def get_articles_by_date(query_date: date):
-    start_of_day = datetime.combine(query_date, time.min)
-    end_of_day = datetime.combine(query_date, time.max)
+    query_date_str = query_date.isoformat()
     
-    start_of_day_iso = start_of_day.isoformat() + "Z"
-    end_of_day_iso = end_of_day.isoformat() + "Z"
-
-    query = {
-        "published_date": {
-            "$gte": start_of_day_iso,
-            "$lt": end_of_day_iso
-        }
-    }
+    query = { "crawled_date": query_date_str }
     
     articles = list(news_collection.find(query, {'_id': 0}))
+
+    if not articles:
+        return {"message": f"No articles were crawled on {query_date_str}."}
     return articles
 
 @app.get("/", summary="Trạng thái API", include_in_schema=False)
