@@ -78,11 +78,11 @@ def crawl_latest_bbc_news():
 
     return _enrich_and_store_articles(crawled_articles)
 
-@app.get("/crawl/guardian", summary="Crawl 2 tin tức mới nhất từ The Guardian")
+@app.get("/crawl/guardian", summary="Crawl 3 tin tức mới nhất từ The Guardian")
 def crawl_latest_guardian_news():
     if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["guardian"]
-    latest_links = parser.get_latest_links( limit=2)
+    latest_links = parser.get_latest_links( limit=3)
 
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
