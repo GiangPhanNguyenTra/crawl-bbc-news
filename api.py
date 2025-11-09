@@ -1,15 +1,20 @@
+import requests
 from fastapi import FastAPI, HTTPException
-from datetime import date
+from datetime import date, datetime, time
 from typing import List
+
 from crawler.bbc_parser import BBCParser
 from crawler.guardian_parser import GuardianParser
 from crawler.reuters_parser import ReutersParser
 from crawler.word_analyzer import WordAnalyzer
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import settings
+from database import news_collection
+
 app = FastAPI(
-    title="News Crawler API",
-    description="API để crawl tin tức từ các nguồn báo uy tín.",
+    title="News Crawler & Enrichment API",
+    description="API để crawl, làm giàu dữ liệu và lưu trữ tin tức.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -30,57 +35,86 @@ except FileNotFoundError:
     analyzer = None
     PARSERS = None
 
-def _process_articles_with_tfidf(articles: List[dict]) -> List[dict]:
+def _enrich_and_store_articles(articles: List[dict]) -> List[dict]:
     if not articles or not analyzer:
         return []
 
     corpus = [article.get('content_for_analysis', '') for article in articles]
-    all_keywords = analyzer.extract_keywords_with_tfidf(corpus)
+    all_keywords_lists = analyzer.extract_keywords_with_tfidf(corpus)
 
+    unique_words_to_enrich = set(word for keywords in all_keywords_lists for word in keywords)
+
+    word_details_map = {}
+    if unique_words_to_enrich:
+        try:
+            response = requests.post(settings.ENRICH_API_URL, json={"words": list(unique_words_to_enrich)})
+            response.raise_for_status()
+            enrich_results = response.json().get("results", [])
+            word_details_map = {result['word']: result for result in enrich_results}
+        except requests.RequestException as e:
+            print(f"Could not call enrichment API: {e}")
+
+    final_articles = []
     for i, article in enumerate(articles):
-        article['list_words'] = all_keywords[i]
+        enriched_words = [word_details_map.get(word) for word in all_keywords_lists[i] if word in word_details_map]
+        article['list_words'] = enriched_words
         del article['content_for_analysis']
+        
+        news_collection.replace_one({'link': article['link']}, article, upsert=True)
+        final_articles.append(article)
     
-    return articles
+    return final_articles
 
 @app.get("/crawl/bbc", summary="Crawl 5 tin tức mới nhất từ BBC News")
 def crawl_latest_bbc_news():
-    if not PARSERS or not analyzer:
-        raise HTTPException(status_code=500, detail="Server not configured properly.")
-
+    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["bbc"]
     latest_links = parser.get_latest_links( limit=5)
     
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
-    return _process_articles_with_tfidf(crawled_articles)
+    return _enrich_and_store_articles(crawled_articles)
 
 @app.get("/crawl/guardian", summary="Crawl 5 tin tức mới nhất từ The Guardian")
 def crawl_latest_guardian_news():
-    if not PARSERS or not analyzer:
-        raise HTTPException(status_code=500, detail="Server not configured properly.")
-
+    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["guardian"]
-    latest_links = parser.get_latest_links(limit=5)
+    latest_links = parser.get_latest_links( limit=5)
 
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
-    return _process_articles_with_tfidf(crawled_articles)
+    return _enrich_and_store_articles(crawled_articles)
 
 @app.get("/crawl/reuters", summary="Crawl 5 tin tức mới nhất từ Reuters")
 def crawl_latest_reuters_news():
-    if not PARSERS or not analyzer:
-        raise HTTPException(status_code=500, detail="Server not configured properly.")
-
+    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
     parser = PARSERS["reuters"]
-    latest_links = parser.get_latest_links(limit=5)
+    latest_links = parser.get_latest_links( limit=5)
 
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
-    return _process_articles_with_tfidf(crawled_articles)
+    return _enrich_and_store_articles(crawled_articles)
+
+@app.get("/articles/{query_date}", summary="Lấy danh sách các báo đã crawl trong ngày từ DB")
+def get_articles_by_date(query_date: date):
+    start_of_day = datetime.combine(query_date, time.min)
+    end_of_day = datetime.combine(query_date, time.max)
+    
+    start_of_day_iso = start_of_day.isoformat() + "Z"
+    end_of_day_iso = end_of_day.isoformat() + "Z"
+
+    query = {
+        "published_date": {
+            "$gte": start_of_day_iso,
+            "$lt": end_of_day_iso
+        }
+    }
+    
+    articles = list(news_collection.find(query, {'_id': 0}))
+    return articles
 
 @app.get("/", summary="Trạng thái API", include_in_schema=False)
 def read_root():

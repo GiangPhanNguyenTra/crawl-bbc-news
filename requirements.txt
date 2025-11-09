@@ -7,3 +7,8 @@ bs4
 fastapi
 uvicorn[standard]
 scikit-learn
+
+pymongo[srv]
+python-dotenv
+pydantic
+pydantic-settings
