@@ -1,4 +1,5 @@
 import requests
+import asyncio
 from fastapi import FastAPI, HTTPException
 from datetime import date, datetime, time
 from typing import List
@@ -41,7 +42,6 @@ def _enrich_and_store_articles(articles: List[dict]) -> List[dict]:
 
     corpus = [article.get('content_for_analysis', '') for article in articles]
     all_keywords_lists = analyzer.extract_keywords_with_tfidf(corpus)
-
     unique_words_to_enrich = set(word for keywords in all_keywords_lists for word in keywords)
 
     word_details_map = {}
@@ -67,47 +67,58 @@ def _enrich_and_store_articles(articles: List[dict]) -> List[dict]:
     
     return final_articles
 
-@app.get("/crawl/bbc", summary="Crawl 1 tin tức mới nhất từ BBC News")
-def crawl_latest_bbc_news():
-    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
-    parser = PARSERS["bbc"]
-    latest_links = parser.get_latest_links( limit=1)
+def _perform_crawl(source: str, limit: int):
+    if not PARSERS:
+        print(f"Cannot perform crawl for {source}: Parsers not initialized.")
+        return
+    
+    print(f"Performing crawl for {source} with limit {limit}...")
+    parser = PARSERS[source]
+    latest_links = parser.get_latest_links(limit=limit)
     
     crawled_articles = [parser.parse_article(link) for link in latest_links if link]
     crawled_articles = [article for article in crawled_articles if article]
 
-    return _enrich_and_store_articles(crawled_articles)
+    result = _enrich_and_store_articles(crawled_articles)
+    print(f"Crawl for {source} completed. Stored {len(result)} articles.")
+    return result
 
-@app.get("/crawl/guardian", summary="Crawl 2 tin tức mới nhất từ The Guardian")
+@app.on_event("startup")
+async def startup_event():
+    print("Server starting up. Checking for daily crawl...")
+    today_str = date.today().isoformat()
+    
+    already_crawled = news_collection.find_one({"crawled_date": today_str})
+    
+    if already_crawled:
+        print(f"Daily crawl for {today_str} has already been completed. Skipping.")
+    else:
+        print(f"No crawl data found for {today_str}. Starting automatic daily crawl...")
+        try:
+            _perform_crawl("bbc", 5)
+            _perform_crawl("guardian", 5)
+            _perform_crawl("reuters", 5)
+            print("Automatic daily crawl finished successfully.")
+        except Exception as e:
+            print(f"An error occurred during automatic daily crawl: {e}")
+
+@app.get("/crawl/bbc", summary="Crawl  tin tức mới nhất từ BBC News")
+def crawl_latest_bbc_news():
+    return _perform_crawl("bbc", 5)
+
+@app.get("/crawl/guardian", summary="Crawl 5 tin tức mới nhất từ The Guardian")
 def crawl_latest_guardian_news():
-    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
-    parser = PARSERS["guardian"]
-    latest_links = parser.get_latest_links( limit=2)
+    return _perform_crawl("guardian", 5)
 
-    crawled_articles = [parser.parse_article(link) for link in latest_links if link]
-    crawled_articles = [article for article in crawled_articles if article]
-
-    return _enrich_and_store_articles(crawled_articles)
-
-@app.get("/crawl/reuters", summary="Crawl 2 tin tức mới nhất từ Reuters")
+@app.get("/crawl/reuters", summary="Crawl 5 tin tức mới nhất từ Reuters")
 def crawl_latest_reuters_news():
-    if not PARSERS: raise HTTPException(status_code=500, detail="Server not configured properly.")
-    parser = PARSERS["reuters"]
-    latest_links = parser.get_latest_links( limit=2)
-
-    crawled_articles = [parser.parse_article(link) for link in latest_links if link]
-    crawled_articles = [article for article in crawled_articles if article]
-
-    return _enrich_and_store_articles(crawled_articles)
+    return _perform_crawl("reuters", 5)
 
 @app.get("/articles/{query_date}", summary="Lấy danh sách các báo đã crawl trong ngày từ DB")
 def get_articles_by_date(query_date: date):
     query_date_str = query_date.isoformat()
-    
-    query = { "crawled_date": query_date_str }
-    
+    query = {"crawled_date": query_date_str}
     articles = list(news_collection.find(query, {'_id': 0}))
-
     if not articles:
         return {"message": f"No articles were crawled on {query_date_str}."}
     return articles
