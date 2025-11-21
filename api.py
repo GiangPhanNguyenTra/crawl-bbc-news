@@ -95,24 +95,24 @@ async def startup_event():
     else:
         print(f"No crawl data found for {today_str}. Starting automatic daily crawl...")
         try:
-            _perform_crawl("bbc", 5)
-            _perform_crawl("guardian", 5)
-            _perform_crawl("reuters", 5)
+            _perform_crawl("bbc", 1)
+            _perform_crawl("guardian", 2)
+            _perform_crawl("reuters", 2)
             print("Automatic daily crawl finished successfully.")
         except Exception as e:
             print(f"An error occurred during automatic daily crawl: {e}")
 
-@app.get("/crawl/bbc", summary="Crawl  tin tức mới nhất từ BBC News")
+@app.get("/crawl/bbc", summary="Crawl 1 tin tức mới nhất từ BBC News")
 def crawl_latest_bbc_news():
-    return _perform_crawl("bbc", 5)
+    return _perform_crawl("bbc", 1)
 
-@app.get("/crawl/guardian", summary="Crawl 5 tin tức mới nhất từ The Guardian")
+@app.get("/crawl/guardian", summary="Crawl 2 tin tức mới nhất từ The Guardian")
 def crawl_latest_guardian_news():
-    return _perform_crawl("guardian", 5)
+    return _perform_crawl("guardian", 2)
 
-@app.get("/crawl/reuters", summary="Crawl 5 tin tức mới nhất từ Reuters")
+@app.get("/crawl/reuters", summary="Crawl 2 tin tức mới nhất từ Reuters")
 def crawl_latest_reuters_news():
-    return _perform_crawl("reuters", 5)
+    return _perform_crawl("reuters", 2)
 
 @app.get("/articles/{query_date}", summary="Lấy danh sách các báo đã crawl trong ngày từ DB")
 def get_articles_by_date(query_date: date):

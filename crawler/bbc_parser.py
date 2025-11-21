@@ -13,7 +13,7 @@ class BBCParser(BaseParser):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
 
-    def get_latest_links(self, limit=5):
+    def get_latest_links(self, limit=1):
         print(f"Fetching latest links from {self.news_url}...")
         try:
             response = requests.get(self.news_url, headers=self.headers, timeout=10)

@@ -21,7 +21,7 @@ class GuardianParser(BaseParser):
         self.base_url = "https://www.theguardian.com"
         self.news_url = f"{self.base_url}/world"
 
-    def get_latest_links(self, limit: int = 5) -> List[str]:
+    def get_latest_links(self, limit: int = 2) -> List[str]:
         try:
             response = requests.get(self.news_url)
             response.raise_for_status()
