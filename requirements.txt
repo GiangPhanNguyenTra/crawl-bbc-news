@@ -17,3 +17,4 @@ numpy
 
 keybert
 sentence-transformers
+apscheduler

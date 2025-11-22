@@ -4,6 +4,9 @@ from fastapi import FastAPI, HTTPException
 from datetime import date, datetime, time
 from typing import List
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 from crawler.bbc_parser import BBCParser
 from crawler.guardian_parser import GuardianParser
 from crawler.reuters_parser import ReutersParser
@@ -24,6 +27,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+scheduler = AsyncIOScheduler()
 
 try:
     analyzer = WordAnalyzer(cefr_word_list_path='data/word_list_cefr_clean.csv')
@@ -83,24 +88,54 @@ def _perform_crawl(source: str, limit: int):
     print(f"Crawl for {source} completed. Stored {len(result)} articles.")
     return result
 
-@app.on_event("startup")
-async def startup_event():
-    print("Server starting up. Checking for daily crawl...")
+def run_daily_tasks():
+    print("Executing scheduled daily crawl...")
     today_str = date.today().isoformat()
     
+    if news_collection.find_one({"crawled_date": today_str}):
+        print(f"Data for {today_str} already exists. Scheduler skipping.")
+        return
+
+    try:
+        _perform_crawl("bbc", 1)
+        _perform_crawl("guardian", 2)
+        _perform_crawl("reuters", 2)
+        print("Scheduled daily crawl finished successfully.")
+    except Exception as e:
+        print(f"Error during scheduled crawl: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    print("Server starting up...")
+    
+    # 1. Kiểm tra crawl ngay khi bật server
+    today_str = date.today().isoformat()
     already_crawled = news_collection.find_one({"crawled_date": today_str})
     
     if already_crawled:
-        print(f"Daily crawl for {today_str} has already been completed. Skipping.")
+        print(f"Daily crawl for {today_str} already completed. Startup check done.")
     else:
-        print(f"No crawl data found for {today_str}. Starting automatic daily crawl...")
+        print(f"No crawl data for {today_str}. Starting immediate crawl...")
         try:
             _perform_crawl("bbc", 1)
             _perform_crawl("guardian", 2)
             _perform_crawl("reuters", 2)
-            print("Automatic daily crawl finished successfully.")
         except Exception as e:
-            print(f"An error occurred during automatic daily crawl: {e}")
+            print(f"Error during startup crawl: {e}")
+
+    # 2. Khởi động Scheduler cho các ngày tiếp theo lúc 00:01
+    scheduler.add_job(
+        run_daily_tasks,
+        CronTrigger(hour=0, minute=1),
+        id="daily_crawl_job",
+        replace_existing=True
+    )
+    scheduler.start()
+    print("Scheduler started. Waiting for next 00:01 trigger.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
 
 @app.get("/crawl/bbc", summary="Crawl 1 tin tức mới nhất từ BBC News")
 def crawl_latest_bbc_news():
