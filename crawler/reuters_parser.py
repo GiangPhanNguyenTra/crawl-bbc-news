@@ -56,9 +56,23 @@ class ReutersParser:
                 desc_text = meta_desc_tag['content']
 
         creation_date_iso = "N/A"
-        time_tag = soup.find('time', {'data-testid': 'Body'})
-        if time_tag and time_tag.has_attr('datetime'):
-            creation_date_iso = time_tag['datetime']
+        published_date = None
+    
+        time_tag = soup.find("time")
+        if time_tag:
+            # Reuters thường để ISO trong datetime
+            datetime_attr = time_tag.get("datetime")
+            if datetime_attr:
+                try:
+                    # validate ISO
+                    datetime.fromisoformat(datetime_attr.replace("Z", "+00:00"))
+                    published_date = datetime_attr
+                except ValueError:
+                    published_date = None
+
+        # time_tag = soup.find('time', {'data-testid': 'Body'})
+        # if time_tag and time_tag.has_attr('datetime'):
+        #     creation_date_iso = time_tag['datetime']
         
         main_image_url = "N/A"
         og_image_tag = soup.find('meta', property='og:image')
@@ -82,7 +96,7 @@ class ReutersParser:
             "link": article_url,
             "title": title_tag.get_text(strip=True) if title_tag else "N/A",
             "desc": desc_text,
-            "published_date": creation_date_iso,
+            "published_date": published_date,
             "image": main_image_url,
             "content_for_analysis": full_content_for_analysis 
         }
