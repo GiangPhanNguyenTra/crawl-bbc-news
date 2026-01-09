@@ -90,7 +90,7 @@ class ReutersParser:
             content_text = ' '.join([p.get_text(strip=True) for p in paragraphs])
         
         full_content_for_analysis = f"{title_tag.get_text(strip=True) if title_tag else ''}. {desc_text}. {content_text}"
-
+        print(f"Extracted content length: {full_content_for_analysis}")
         return {
             "src": "Reuters",
             "link": article_url,
